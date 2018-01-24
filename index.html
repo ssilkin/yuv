@@ -1,0 +1,93 @@
+<html>
+  <head>
+    <title>Yv</title>
+  </head>
+  <style type='text/css'>
+  </style>
+  <body bgcolor='#303030'>
+    <div style="height: 0px;width: 0px; overflow:hidden;">
+      <input type="file" id="files">
+    </div>
+    <div id="menu"></div>
+    <div id='canvas zone' style='position: relative;'>
+        <canvas id='canvas' width='0px' height='0px'></canvas>
+    </div>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+  <script src="./reader.js"></script>
+  <script src="./proc.js"></script>
+  <script>
+    var g_readers = [];
+    var g_ctx = {
+      'frame_num'  : 0,
+      'num_frames' : 0
+    };
+
+    function update_ctx() {
+      g_ctx.num_frames = 0;
+      for (var i = 0; i < g_readers.length; ++i) {
+        g_ctx.num_frames = Math.max(g_ctx.num_frames, g_readers[i].num_frames);
+      }
+      g_ctx.frame_num = Math.min(g_ctx.frame_num, g_ctx.num_frames - 1);
+    }
+
+    function show() {
+      var rgb = proc(g_readers)
+      var canvas = document.getElementById('canvas');
+      canvas.width = rgb.width;
+      canvas.height = rgb.height;
+      canvas.getContext('2d').putImageData(rgb, 0, 0);
+    }
+
+    function seek(frame_num) {
+      var num_seeked = 0;
+      for (var i = 0; i < g_readers.length; ++i) {
+        g_readers[i].seek(frame_num, function() {
+          num_seeked++;
+          if (num_seeked == g_readers.length)
+            show();
+        });
+      }
+    }
+
+    var keyCode = {
+      LEFT: 37, RIGHT:39,
+    };
+
+    $(document).keydown(function(event) {
+      switch(event.keyCode) {
+        case keyCode.LEFT:
+        case keyCode.RIGHT:
+          g_ctx.frame_num = g_ctx.frame_num +
+              (event.keyCode == keyCode.RIGHT? 1 : -1);
+          g_ctx.frame_num = Math.max(
+            Math.min(g_ctx.frame_num, g_ctx.num_frames - 1), 0);
+          seek(g_ctx.frame_num);
+        break;
+      }
+    });
+
+    $('#files').change(function(e) {
+      $('#open').remove();
+      var reader = new FrameReader();
+      reader.open(e.target.files[0], function(success) {
+        if (success) {
+          g_readers.push(reader);
+          update_ctx();
+          seek(g_ctx.frame_num);
+        } else {
+          alert('Cannot open ' + e.target.files[0]);
+        }
+      });
+    });
+
+    $(document).ready(function() {
+      var $elem = $('<span>', {text: 'Open',
+          css: {backgroundColor: 'green', cursor: 'default'}});
+      $elem.click(function() {
+        $("#files").trigger("click");
+      });
+      $('#menu').append($elem);
+    });
+  </script>
+  </body>
+</html>
