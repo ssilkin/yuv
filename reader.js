@@ -8,6 +8,7 @@ function FrameReader() {
   this.frame_len = 0;
   this.frame_inf = new Map();
   this.num_frames = 0;
+  this.frame_num = 0;
   this.reader = new FileReader();
 
   this.open = function(file, callback) {
@@ -18,9 +19,10 @@ function FrameReader() {
       this.read(0, 100, function() {
         var y4m = self.parse_y4m_header(self.data, 0);
         self.frame_inf.set(0, y4m);
+        // Header of frame #0 contains extra fiels such as width, height, etc.
+        // Below assumes that starting from frame #1 size of header is constant.
         self.seek(1, function() {
           var frame_inf = self.frame_inf.get(1);
-          self.num_frames = self.frame_inf.size;
           if (frame_inf) {
             self.num_frames = 1 + (self.file.size - frame_inf.pos) /
                 (frame_inf.header_len + frame_inf.frame_len);
@@ -59,35 +61,39 @@ function FrameReader() {
   }
 
   this.seek = function(frame_num, callback) {
+    var self = this;
     if (this.file_fmt != 'y4m') {
       this.read(frame_num * this.frame_len, this.frame_len, function() {
+        self.frame_num = frame_num;
         callback();
       });
     } else {
-      var self = this;
-      // If required frame was not read before seek backward to already
-      // parsed frame then step forward frame-by-frame to required one.
-      // Only frame headers of intermediate frames are read and parsed.
-      frame_inf = this.frame_inf.get(frame_num);
+      var frame_inf = this.frame_inf.get(frame_num);
       if (frame_inf) {
         const pos = frame_inf.pos + frame_inf.header_len;
         this.read(pos, frame_inf.frame_len, function() {
           self.set_params(frame_inf.w, frame_inf.h, frame_inf.c);
+          self.frame_num = frame_num;
           callback();
         });
       } else {
-        frame_inf = this.frame_inf.get(frame_num - 1);
+        // Requested frame was not read before. Find last read frame and
+        // step frame-by-frame to requested one reading only headers of frames
+        // in between.
+        var prev_frame_num = frame_num - 1;
+        while (!this.frame_inf.get(prev_frame_num))
+          prev_frame_num--;
+
+        var frame_inf = this.frame_inf.get(prev_frame_num);
         if (frame_inf) {
           const pos = frame_inf.pos +
-              frame_inf.header_len + frame_inf.frame_len;
+          frame_inf.header_len + frame_inf.frame_len;
           this.read(pos, 100, function() {
             var y4m = self.parse_y4m_header(self.data, pos, frame_inf.w,
                 frame_inf.h, frame_inf.c);
-            self.frame_inf.set(frame_num, y4m);
+            self.frame_inf.set(prev_frame_num + 1, y4m);
             setTimeout(function() { self.seek(frame_num, callback); }, 0);
           });
-        } else {
-          setTimeout(function() { self.seek(frame_num - 1, callback);}, 1);
         }
       }
     }

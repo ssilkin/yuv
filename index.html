@@ -4,7 +4,7 @@
   </head>
   <style type='text/css'>
   </style>
-  <body bgcolor='#303030'>
+  <body>
     <div style="height: 0px;width: 0px; overflow:hidden;">
       <input type="file" id="files">
     </div>
@@ -19,19 +19,43 @@
     var g_readers = [];
     var g_ctx = {
       'frame_num'  : 0,
-      'num_frames' : 0
+      'num_frames' : 0,
+      'reader_idx' : 0
     };
 
-    function update_ctx() {
+    function add(reader) {
+      g_readers.push(reader);
       g_ctx.num_frames = 0;
-      for (var i = 0; i < g_readers.length; ++i) {
+      for (var i = 0; i < g_readers.length; ++i)
         g_ctx.num_frames = Math.max(g_ctx.num_frames, g_readers[i].num_frames);
-      }
       g_ctx.frame_num = Math.min(g_ctx.frame_num, g_ctx.num_frames - 1);
+
+      var $btn = $('<button>', {class:'button-file'});
+      $btn.data('reader_idx', g_readers.length - 1);
+      $btn.click(function() {
+        g_ctx.reader_idx = $(this).data('reader_idx');
+        seek(g_ctx.frame_num);
+      });
+      $('#menu').append($btn);
+      $btn.trigger('click');
+    }
+
+    function update() {
+      $('.button-file').each(function(i, btn) {
+        var idx = $(btn).data('reader_idx');
+        var frame_num = g_readers[idx].frame_num;
+        var num_frames = g_readers[idx].num_frames;
+        var file_name = g_readers[idx].file.name;
+        var text = file_name.slice(0, Math.min(4, file_name.length)) +
+            ' ' + frame_num + '/' + (num_frames - 1);
+        $(btn).html(text);
+      });
     }
 
     function show() {
-      var rgb = proc(g_readers)
+      var readers = [];
+      readers.push(g_readers[g_ctx.reader_idx]);
+      var rgb = proc(readers);
       var canvas = document.getElementById('canvas');
       canvas.width = rgb.width;
       canvas.height = rgb.height;
@@ -41,10 +65,13 @@
     function seek(frame_num) {
       var num_seeked = 0;
       for (var i = 0; i < g_readers.length; ++i) {
-        g_readers[i].seek(frame_num, function() {
+        var seek_to = Math.min(frame_num, g_readers[i].num_frames - 1);
+        g_readers[i].seek(seek_to, function() {
           num_seeked++;
-          if (num_seeked == g_readers.length)
+          if (num_seeked == g_readers.length) {
+            update();
             show();
+          }
         });
       }
     }
@@ -71,9 +98,7 @@
       var reader = new FrameReader();
       reader.open(e.target.files[0], function(success) {
         if (success) {
-          g_readers.push(reader);
-          update_ctx();
-          seek(g_ctx.frame_num);
+          add(reader);
         } else {
           alert('Cannot open ' + e.target.files[0]);
         }
@@ -81,10 +106,9 @@
     });
 
     $(document).ready(function() {
-      var $elem = $('<span>', {text: 'Open',
-          css: {backgroundColor: 'green', cursor: 'default'}});
+      var $elem = $('<button>', {text: 'Open'});
       $elem.click(function() {
-        $("#files").trigger("click");
+        $('#files').trigger('click');
       });
       $('#menu').append($elem);
     });
