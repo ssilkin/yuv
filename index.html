@@ -3,6 +3,9 @@
     <title>Yv</title>
   </head>
   <style type='text/css'>
+  * {
+    font-family:monospace;
+  }
   </style>
   <body>
     <div style="height: 0px;width: 0px; overflow:hidden;">
@@ -140,7 +143,7 @@
       });
       $('#menu').append($open);
 
-      var $fmt = $('<input>', {type: 'text', id: 'fmt', css: {width:90}});
+      var $fmt = $('<input>', {type: 'text', id: 'fmt', css: {width:100}});
       $fmt.val('1280x720 yv12');
       $fmt.keyup(function(key) {
         if (key.which == 13) {
