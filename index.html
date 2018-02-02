@@ -50,8 +50,13 @@
         var text = file_name.slice(0, Math.min(4, file_name.length)) + ' ' +
             g_readers[idx].frame_num + '/' + (g_readers[idx].num_frames - 1);
         $(btn).html(text);
+        $(btn).css('background-color','');
+        $(btn).css('color','');
 
         if (idx == g_ctx.reader_idx) {
+          $(btn).css('background-color','green');
+          $(btn).css('color','white');
+
           var fmt = '' + g_readers[idx].width + 'x' + g_readers[idx].height +
               ' ' + g_readers[idx].pix_fmt;
           $('#fmt').val(fmt);
@@ -87,16 +92,27 @@
       LEFT: 37, RIGHT:39,
     };
 
-    $(document).keydown(function(event) {
-      switch(event.keyCode) {
+    $(document).keydown(function(key) {
+      switch(key.which) {
         case keyCode.LEFT:
         case keyCode.RIGHT:
           g_ctx.frame_num = g_ctx.frame_num +
-              (event.keyCode == keyCode.RIGHT? 1 : -1);
+              (key.which == keyCode.RIGHT? 1 : -1);
           g_ctx.frame_num = Math.max(
             Math.min(g_ctx.frame_num, g_ctx.num_frames - 1), 0);
           seek(g_ctx.frame_num);
         break;
+      }
+
+      if (key.which >= 49 && key.which <= 57) {
+        //#1..9
+        var n = key.which - 49;
+        if (n < g_readers.length) {
+          var $btn = $('.button-file').filter(function() {
+            return $(this).data('reader_idx') == n;
+          });
+          $btn.trigger('click');
+        }
       }
     });
 
