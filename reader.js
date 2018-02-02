@@ -2,7 +2,7 @@ function FrameReader() {
   this.file = 0;
   this.data = [];
   this.file_fmt = 'yuv';
-  this.pix_fmt = '420';
+  this.pix_fmt = 'yv12';
   this.width = 640;
   this.height = 360;
   this.frame_len = 0;
@@ -11,7 +11,7 @@ function FrameReader() {
   this.frame_num = 0;
   this.reader = new FileReader();
 
-  this.open = function(file, callback) {
+  this.open = function(file, callback, width, height, pix_fmt, force_fmt) {
     this.file = file;
     this.file_fmt = this.file.name.toLowerCase().split('.').pop();
     if (this.file_fmt == 'y4m') {
@@ -31,26 +31,25 @@ function FrameReader() {
         });
       });
     } else {
-      var width = 640;
-      var height = 480;
-      var pix_fmt = '420';
-      var m = file.name.toLowerCase().match(/([\d]{1,4})x([\d]{1,4})/);
-      if (m) {
-        width = m[1];
-        height = m[2];
-      } else {
-        m = file.name.toLowerCase().match(/(1080|720|vga|qcif|cif)/);
+      if (!force_fmt) {
+        var m = file.name.toLowerCase().match(/([\d]{1,4})x([\d]{1,4})/);
         if (m) {
-          const wxh = {'1080':[1920,1080], '720':[1280,720],
-              'vga':[640,480], 'cif':[352, 288], 'qcif':[176, 144]};
-          width = wxh[m[1]][0];
-          height = wxh[m[1]][1];
+          width = m[1];
+          height = m[2];
+        } else {
+          m = file.name.toLowerCase().match(/(1080|720|vga|qcif|cif)/);
+          if (m) {
+            const wxh = {'1080':[1920,1080], '720':[1280,720],
+                'vga':[640,480], 'cif':[352, 288], 'qcif':[176, 144]};
+            width = wxh[m[1]][0];
+            height = wxh[m[1]][1];
+          }
         }
-      }
 
-      m = file.name.toLowerCase().match(/[-_](420|422|444|400|gray)/)
-      if (m) {
-        pix_fmt = m[1] == '400'? 'gray' : m[1];
+        m = file.name.toLowerCase().match(/[-_](420|422|444|400|gray)/)
+        if (m) {
+          pix_fmt = m[1] == '400'? 'gray' : m[1];
+        }
       }
 
       this.set_params(width, height, pix_fmt);
@@ -181,12 +180,12 @@ function FrameReader() {
     this.chroma_horz_freq_log2 = 0;
     this.chroma_vert_freq_log2 = 0;
     this.frame_len = this.width * this.height;
-    if (this.pix_fmt == '444') {
+    if (this.pix_fmt == '444' || this.pix_fmt == 'yv24') {
       this.frame_len *= 3;
-    } else if (this.pix_fmt == '422') {
+    } else if (this.pix_fmt == '422' || this.pix_fmt == 'yv16') {
       this.frame_len *= 2;
       this.chroma_horz_freq_log2 = 1;
-    } else if (this.pix_fmt == '420') {
+    } else if (this.pix_fmt == '420' || this.pix_fmt == 'yv12') {
       this.frame_len *= 3;
       this.frame_len /= 2;
       this.chroma_horz_freq_log2 = 1;

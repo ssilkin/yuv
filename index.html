@@ -20,7 +20,10 @@
     var g_ctx = {
       'frame_num'  : 0,
       'num_frames' : 0,
-      'reader_idx' : 0
+      'reader_idx' : 0,
+      'default_width' : 1280,
+      'default_height': 720,
+      'default_pix_fmt' : 'yv12'
     };
 
     function add(reader) {
@@ -43,12 +46,16 @@
     function update() {
       $('.button-file').each(function(i, btn) {
         var idx = $(btn).data('reader_idx');
-        var frame_num = g_readers[idx].frame_num;
-        var num_frames = g_readers[idx].num_frames;
         var file_name = g_readers[idx].file.name;
-        var text = file_name.slice(0, Math.min(4, file_name.length)) +
-            ' ' + frame_num + '/' + (num_frames - 1);
+        var text = file_name.slice(0, Math.min(4, file_name.length)) + ' ' +
+            g_readers[idx].frame_num + '/' + (g_readers[idx].num_frames - 1);
         $(btn).html(text);
+
+        if (idx == g_ctx.reader_idx) {
+          var fmt = '' + g_readers[idx].width + 'x' + g_readers[idx].height +
+              ' ' + g_readers[idx].pix_fmt;
+          $('#fmt').val(fmt);
+        }
       });
     }
 
@@ -96,21 +103,55 @@
     $('#files').change(function(e) {
       $('#open').remove();
       var reader = new FrameReader();
-      reader.open(e.target.files[0], function(success) {
-        if (success) {
-          add(reader);
-        } else {
-          alert('Cannot open ' + e.target.files[0]);
-        }
-      });
+      reader.open(e.target.files[0],
+          function(success) {
+            if (success) {
+              add(reader);
+            } else {
+              alert('Cannot open ' + e.target.files[0]);
+            }
+          },
+          g_ctx.default_width,
+          g_ctx.default_height,
+          g_ctx.default_pix_fmt
+      );
     });
 
     $(document).ready(function() {
-      var $elem = $('<button>', {text: 'Open'});
-      $elem.click(function() {
+      var $open = $('<button>', {text: 'Open'});
+      $open.click(function() {
         $('#files').trigger('click');
       });
-      $('#menu').append($elem);
+      $('#menu').append($open);
+
+      var $fmt = $('<input>', {type: 'text', id: 'fmt', css: {width:90}});
+      $fmt.val('1280x720 yv12');
+      $fmt.keyup(function(key) {
+        if (key.which == 13) {
+          var fmt = $(this).val().toLowerCase();
+          var m = fmt.match(/([\d]{1,4})x([\d]{1,4})/);
+          if (m) {
+            g_ctx.default_width = parseInt(m[1]);
+            g_ctx.default_height = parseInt(m[2]);
+          };
+
+          m = fmt.match(/(yv12|i420)/);
+          if (m) {
+            g_ctx.default_pix_fmt = m[1];
+          }
+
+          if (g_readers.length) {
+            g_readers[g_ctx.reader_idx].open(
+                g_readers[g_ctx.reader_idx].file,
+                function() { seek(g_ctx.frame_num); },
+                g_ctx.default_width,
+                g_ctx.default_height,
+                g_ctx.default_pix_fmt,
+                true);
+          }
+        }
+      });
+      $('#menu').append($fmt);
     });
   </script>
   </body>
