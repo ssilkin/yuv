@@ -95,7 +95,7 @@
       LEFT: 37, RIGHT:39,
     };
 
-    $(document).keyup(function(key) {
+    $(document).keydown(function(key) {
       switch(key.which) {
         case keyCode.LEFT:
         case keyCode.RIGHT:
@@ -145,7 +145,7 @@
 
       var $fmt = $('<input>', {type: 'text', id: 'fmt', css: {width:100}});
       $fmt.val('1280x720 yv12');
-      $fmt.keyup(function(key) {
+      $fmt.keydown(function(key) {
         key.stopPropagation();
         if (key.which == 13) {
           var fmt = $(this).val().toLowerCase();
