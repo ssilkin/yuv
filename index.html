@@ -6,18 +6,22 @@
   * {
     font-family:monospace;
   }
+  pre {
+    margin: 0 0;
+  }
   </style>
   <body>
-    <div style="height: 0px;width: 0px; overflow:hidden;">
-      <input type="file" id="files">
+    <div style='height: 0px;width: 0px; overflow:hidden;'>
+      <input type='file' id='files'>
     </div>
-    <div id="menu"></div>
-    <div id='canvas zone' style='position: relative;'>
+    <div id='menu'></div>
+    <div id='canvas_zone' style='position: relative;'>
         <canvas id='canvas' width='0px' height='0px'></canvas>
     </div>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
-  <script src="./reader.js"></script>
-  <script src="./proc.js"></script>
+    <div id='log'></div>
+  <script src='https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js'></script>
+  <script src='./reader.js'></script>
+  <script src='./proc.js'></script>
   <script>
     var g_readers = [];
     var g_ctx = {
@@ -26,8 +30,22 @@
       'reader_idx' : 0,
       'default_width' : 1280,
       'default_height': 720,
-      'default_pix_fmt' : 'yv12'
+      'default_pix_fmt' : 'yv12',
+      'mouse_x' : 0,
+      'mouse_y' : 0,
     };
+
+    function padstr(x, length, padding, after) {
+      if (x.length > length)
+        return x.slice(0, length);
+      var pad = Array(length - x.length + 1).join(padding);
+      return after? x + pad : pad + x;
+    }
+
+    function tostr(x, base, length, padding) {
+      var str = x.toString(base);
+      return padstr(str, length, padding, false);
+    }
 
     function add(reader) {
       g_readers.push(reader);
@@ -36,7 +54,7 @@
         g_ctx.num_frames = Math.max(g_ctx.num_frames, g_readers[i].num_frames);
       g_ctx.frame_num = Math.min(g_ctx.frame_num, g_ctx.num_frames - 1);
 
-      var $btn = $('<button>', {class:'button-file'});
+      var $btn = $('<button>', {class:'button-file', title:reader.file.name});
       $btn.data('reader_idx', g_readers.length - 1);
       $btn.click(function() {
         g_ctx.reader_idx = $(this).data('reader_idx');
@@ -46,7 +64,7 @@
       $btn.trigger('click');
     }
 
-    function update() {
+    function update_cnt() {
       $('.button-file').each(function(i, btn) {
         var idx = $(btn).data('reader_idx');
         var file_name = g_readers[idx].file.name;
@@ -67,10 +85,24 @@
       });
     }
 
+    function update_btn(btn, enabled) {
+      if (enabled) {
+        $(btn).css('background-color','green');
+        $(btn).css('color','white');
+      } else {
+        $(btn).css('background-color','');
+        $(btn).css('color','');
+      }
+    }
+
     function show() {
+      if (g_readers.length == 0)
+        return;
+
       var readers = [];
       readers.push(g_readers[g_ctx.reader_idx]);
-      var rgb = proc(readers);
+      var channel = $('#chan').text().toLowerCase();
+      var rgb = proc(readers, channel);
       var canvas = document.getElementById('canvas');
       canvas.width = rgb.width;
       canvas.height = rgb.height;
@@ -84,26 +116,107 @@
         g_readers[i].seek(seek_to, function() {
           num_seeked++;
           if (num_seeked == g_readers.length) {
-            update();
+            update_cnt();
             show();
           }
         });
       }
     }
 
-    var keyCode = {
+    function zoom() {
+      var state = $('#zoom').data('state');
+      var $zoom_window = $('#zoom_window');
+      if ($zoom_window.length)
+        $zoom_window.remove();
+      if (state == 0 || g_readers.length == 0)
+        return;
+      const zoom_wh = 8;
+      var reader = g_readers[g_ctx.reader_idx];
+      var zoom_x = Math.min(g_ctx.mouse_x, reader.width - zoom_wh);
+      var zoom_y = Math.min(g_ctx.mouse_y, reader.height - zoom_wh);
+
+      var val_y = '';
+      var val_u = '';
+      var val_v = '';
+      for (var y = 0, py = zoom_y; y < zoom_wh; ++y, ++py) {
+        if (y > 0) {
+          val_y += '<br>';
+          if ((y & 1)== 0) {
+            val_u += '<br>';
+            val_v += '<br>';
+          }
+        }
+        for (var x = 0, px = zoom_x; x < zoom_wh; ++x, ++px) {
+          const yuv = reader.yuv(py, px);
+          val_y += tostr(yuv[0], 10, 4, ' ');
+          if (((y | x) & 1) == 0) {
+            val_u += tostr(yuv[1], 10, 4, ' ');
+            val_v += tostr(yuv[2], 10, 4, ' ');
+          }
+        }
+      }
+      $zoom_window = $('<div>', {id: 'zoom_window'});
+      $zoom_window.css('position', 'absolute');
+      $zoom_window.css('top', g_ctx.mouse_y);
+      $zoom_window.css('left', g_ctx.mouse_x + 8);
+
+      var $div = $('<div>');
+      var $pre = $('<pre>');
+      $pre.css('background-color', 'white');
+      $pre.append(val_y);
+      $div.append($pre);
+      $zoom_window.append($div);
+
+      $div = $('<div>');
+      $pre = $('<pre>');
+      $div.css('display', 'inline-block');
+      $pre.css('background-color', 'white');
+      $pre.css('color', 'blue');
+      $pre.append(val_u);
+      $div.append($pre);
+      $zoom_window.append($div);
+
+      $div = $('<div>');
+      $pre = $('<pre>');
+      $div.css('display', 'inline-block');
+      $pre.css('background-color', 'white');
+      $pre.css('color', 'red');
+      $pre.append(val_v);
+      $div.append($pre);
+      $zoom_window.append($div);
+
+      $('#canvas_zone').append($zoom_window);
+    }
+
+    $( '#canvas' ).mousemove(function(e) {
+      var r = $('#canvas').get(0).getBoundingClientRect();
+      g_ctx.mouse_x = Math.max(0, e.clientX - r.left);
+      g_ctx.mouse_y = Math.max(0, e.clientY - r.top);
+      zoom();
+    });
+
+    var key_code = {
       LEFT: 37, RIGHT:39,
+      A:65, B:66, C:67, D:68, E:68, F:70, G:71, H:72, I:73, J:74, K:75,
+      L:76, M:77, N:78, O:79, P:80, Q:81, R:82, S:83, T:84, U:85, V:86,
+      W:87, X:88, Y:89, Z:90
     };
 
     $(document).keydown(function(key) {
       switch(key.which) {
-        case keyCode.LEFT:
-        case keyCode.RIGHT:
+        case key_code.LEFT:
+        case key_code.RIGHT:
           g_ctx.frame_num = g_ctx.frame_num +
-              (key.which == keyCode.RIGHT? 1 : -1);
+              (key.which == key_code.RIGHT? 1 : -1);
           g_ctx.frame_num = Math.max(
             Math.min(g_ctx.frame_num, g_ctx.num_frames - 1), 0);
           seek(g_ctx.frame_num);
+        case key_code.Z:
+          $('#zoom').trigger('click');
+          break;
+        case key_code.Y:
+          $('#chan').trigger('click');
+          break;
         break;
       }
 
@@ -172,6 +285,37 @@
         }
       });
       $('#menu').append($fmt);
+
+      var $chan = $('<button>', {id: 'chan', text: 'YUV'});
+      $chan.click(function() {
+        const chans = ['YUV',' Y','U','V'];
+        var idx = chans.indexOf($(this).text());
+        if (++idx >= chans.length)
+          idx = 0;
+        update_btn($(this), idx);
+        $(this).text(chans[idx]);
+        show();
+      });
+      $('#menu').append($chan);
+
+      var $zoom = $('<button>', {id: 'zoom', text: 'Z'});
+      $zoom.data('state', 0);
+      $zoom.click(function() {
+        var state = $(this).data('state') ^ 1;
+        $(this).data('state', state);
+        update_btn($(this), state);
+        zoom();
+      });
+      $('#menu').append($zoom);
+
+      var $hist = $('<button>', {id: 'hist', text: 'H'});
+      $hist.data('state', 0);
+      $hist.click(function() {
+        var state = $(this).data('state') ^ 1;
+        $(this).data('state', state);
+        update_btn($(this), state);
+      });
+      $('#menu').append($hist);
     });
   </script>
   </body>

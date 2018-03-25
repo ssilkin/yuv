@@ -24,8 +24,8 @@ function FrameReader() {
         self.seek(1, function() {
           var frame_inf = self.frame_inf.get(1);
           if (frame_inf) {
-            self.num_frames = 1 + (self.file.size - frame_inf.pos) /
-                (frame_inf.header_len + frame_inf.frame_len);
+            self.num_frames = Math.floor(1 + (self.file.size - frame_inf.pos) /
+                (frame_inf.header_len + frame_inf.frame_len));
           }
           callback(self.num_frames > 0);
         });
