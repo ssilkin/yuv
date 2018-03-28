@@ -211,13 +211,13 @@
           g_ctx.frame_num = Math.max(
             Math.min(g_ctx.frame_num, g_ctx.num_frames - 1), 0);
           seek(g_ctx.frame_num);
+          break;
         case key_code.Z:
           $('#zoom').trigger('click');
           break;
         case key_code.Y:
           $('#chan').trigger('click');
           break;
-        break;
       }
 
       if (key.which >= 49 && key.which <= 57) {
