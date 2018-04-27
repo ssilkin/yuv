@@ -15,6 +15,7 @@
       <input type='file' id='files'>
     </div>
     <div id='menu'></div>
+    <input type='range' id='slider' min=0 max=0 value=0></div>
     <div id='canvas_zone' style='position: relative;'>
         <canvas id='canvas' width='0px' height='0px'></canvas>
     </div>
@@ -54,6 +55,8 @@
         g_ctx.num_frames = Math.max(g_ctx.num_frames, g_readers[i].num_frames);
       g_ctx.frame_num = Math.min(g_ctx.frame_num, g_ctx.num_frames - 1);
 
+      $('#slider').attr('max', g_ctx.num_frames - 1);
+
       var $btn = $('<button>', {class:'button-file', title:reader.file.name});
       $btn.data('reader_idx', g_readers.length - 1);
       $btn.click(function() {
@@ -81,6 +84,8 @@
           var fmt = '' + g_readers[idx].width + 'x' + g_readers[idx].height +
               ' ' + g_readers[idx].pix_fmt;
           $('#fmt').val(fmt);
+
+          $('#slider').val(g_readers[idx].frame_num);
         }
       });
     }
@@ -107,6 +112,9 @@
       canvas.width = rgb.width;
       canvas.height = rgb.height;
       canvas.getContext('2d').putImageData(rgb, 0, 0);
+
+      grid();
+      zoom();
     }
 
     function seek(frame_num) {
@@ -128,16 +136,22 @@
       var $zoom_window = $('#zoom_window');
       if ($zoom_window.length)
         $zoom_window.remove();
+      var $zoom_highlight = $('#zoom_highlight');
+      if ($zoom_highlight.length)
+        $zoom_highlight.remove();
       if (state == 0 || g_readers.length == 0)
         return;
       const zoom_wh = 8;
       var reader = g_readers[g_ctx.reader_idx];
-      var zoom_x = Math.min(g_ctx.mouse_x, reader.width - zoom_wh);
-      var zoom_y = Math.min(g_ctx.mouse_y, reader.height - zoom_wh);
+      var zoom_x = Math.min(Math.max(g_ctx.mouse_x - zoom_wh, 0),
+          reader.width - zoom_wh);
+      var zoom_y = Math.min(Math.max(g_ctx.mouse_y - zoom_wh, 0),
+          reader.height - zoom_wh);
 
       var val_y = '';
       var val_u = '';
       var val_v = '';
+      var sum_y = 0;
       for (var y = 0, py = zoom_y; y < zoom_wh; ++y, ++py) {
         if (y > 0) {
           val_y += '<br>';
@@ -153,6 +167,7 @@
             val_u += tostr(yuv[1], 10, 4, ' ');
             val_v += tostr(yuv[2], 10, 4, ' ');
           }
+          sum_y += yuv[0];
         }
       }
       $zoom_window = $('<div>', {id: 'zoom_window'});
@@ -162,7 +177,8 @@
 
       var $div = $('<div>');
       var $pre = $('<pre>');
-      $pre.css('background-color', 'white');
+      $pre.css('background-color', 'gray');
+      $pre.css('color', 'white');
       $pre.append(val_y);
       $div.append($pre);
       $zoom_window.append($div);
@@ -170,7 +186,7 @@
       $div = $('<div>');
       $pre = $('<pre>');
       $div.css('display', 'inline-block');
-      $pre.css('background-color', 'white');
+      $pre.css('background-color', 'gray');
       $pre.css('color', 'blue');
       $pre.append(val_u);
       $div.append($pre);
@@ -179,13 +195,52 @@
       $div = $('<div>');
       $pre = $('<pre>');
       $div.css('display', 'inline-block');
-      $pre.css('background-color', 'white');
+      $pre.css('background-color', 'gray');
       $pre.css('color', 'red');
       $pre.append(val_v);
       $div.append($pre);
       $zoom_window.append($div);
 
+      // Highlight zoom area.
+      var luma = Math.floor(sum_y / (zoom_wh * zoom_wh) - 128);
+      if (luma < 0)
+        luma += 255;
+      var $zoom_highlight = $('<div>', {id: 'zoom_highlight', css: {
+          position: 'absolute',
+          top: zoom_y,
+          left: zoom_x,
+          width: zoom_wh,
+          height: zoom_wh}});
+      $zoom_highlight.css('border', '1px solid');
+      $zoom_highlight.css('border-color',
+          'rgb(' + luma + ',' + luma + ',' + luma + ')');
+
+      $('#canvas_zone').append($zoom_highlight);
       $('#canvas_zone').append($zoom_window);
+    }
+
+    function grid() {
+      if ($('#grid').text() == 'G' || g_readers.length == 0)
+        return;
+      var canvas = document.getElementById('canvas');
+      var ctx = canvas.getContext('2d');
+      var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var grid_size = parseInt($('#grid').text());
+      for (var y = 0; y < canvas.height; y++) {
+        var draw_horz = (y > 0 && (y & (grid_size - 1)) == 0);
+        for (var x = 0; x < canvas.width; x++) {
+          var draw_vert = (x > 0 && (x & (grid_size - 1)) == 0);
+          if (draw_horz || draw_vert) {
+            var i = (y * canvas.width + x) * 4;
+            img.data[i]     = 255 - img.data[i];
+            img.data[i + 1] = 255 - img.data[i + 1];
+            img.data[i + 2] = 255 - img.data[i + 2];
+          }
+          if (!draw_horz)
+            x += grid_size - 1;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
     }
 
     $( '#canvas' ).mousemove(function(e) {
@@ -211,6 +266,9 @@
           g_ctx.frame_num = Math.max(
             Math.min(g_ctx.frame_num, g_ctx.num_frames - 1), 0);
           seek(g_ctx.frame_num);
+          break;
+        case key_code.G:
+          $('#grid').trigger('click');
           break;
         case key_code.Z:
           $('#zoom').trigger('click');
@@ -286,17 +344,29 @@
       });
       $('#menu').append($fmt);
 
-      var $chan = $('<button>', {id: 'chan', text: 'YUV'});
+      var $chan = $('<button>', {id: 'chan', text: 'YUV', css: {width:'6ch'}});
       $chan.click(function() {
-        const chans = ['YUV',' Y','U','V'];
-        var idx = chans.indexOf($(this).text());
-        if (++idx >= chans.length)
+        const opts = ['YUV',' Y','U','V'];
+        var idx = opts.indexOf($(this).text());
+        if (++idx >= opts.length)
           idx = 0;
         update_btn($(this), idx);
-        $(this).text(chans[idx]);
+        $(this).text(opts[idx]);
         show();
       });
       $('#menu').append($chan);
+
+      var $grid = $('<button>', {id: 'grid', text: 'G', css: {width:'4ch'}});
+      $grid.click(function() {
+        const opts = ['G',' 16','32','64'];
+        var idx = opts.indexOf($(this).text());
+        if (++idx >= opts.length)
+          idx = 0;
+        update_btn($(this), idx);
+        $(this).text(opts[idx]);
+        show();
+      });
+      $('#menu').append($grid);
 
       var $zoom = $('<button>', {id: 'zoom', text: 'Z'});
       $zoom.data('state', 0);
@@ -316,6 +386,11 @@
         update_btn($(this), state);
       });
       $('#menu').append($hist);
+
+      $('#slider').on('input', function() {
+        g_ctx.frame_num = parseInt($(this).val());
+        seek(g_ctx.frame_num);
+      });
     });
   </script>
   </body>
