@@ -9,7 +9,6 @@ function FrameReader() {
   this.frame_inf = new Map();
   this.num_frames = 0;
   this.frame_num = 0;
-  this.reader = new FileReader();
 
   this.open = function(file, callback, width, height, pix_fmt, force_fmt) {
     this.file = file;
@@ -119,14 +118,15 @@ function FrameReader() {
   this.read = function(pos, bytes, callback) {
     if (this.file) {
       var self = this;
-      this.reader.onloadend = function(evt) {
+      var reader = new FileReader();
+      reader.onloadend = function(evt) {
         if (evt.target.readyState == FileReader.DONE) {
           self.data = new Uint8Array(evt.target.result);
           callback();
         }
       }
       var blob = this.file.slice(pos, pos + bytes + 1);
-      this.reader.readAsArrayBuffer(blob);
+      reader.readAsArrayBuffer(blob);
     }
   }
 

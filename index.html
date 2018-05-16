@@ -12,7 +12,7 @@
   </style>
   <body>
     <div style='height: 0px;width: 0px; overflow:hidden;'>
-      <input type='file' id='files'>
+      <input type='file' id='files' multiple>
     </div>
     <div id='menu'></div>
     <input type='range' id='slider' min=0 max=0 value=0></div>
@@ -29,6 +29,7 @@
       'frame_num'  : 0,
       'num_frames' : 0,
       'reader_idx' : 0,
+      'second_reader_idx' : 0,
       'default_width' : 1280,
       'default_height': 720,
       'default_pix_fmt' : 'yv12',
@@ -46,6 +47,15 @@
     function tostr(x, base, length, padding) {
       var str = x.toString(base);
       return padstr(str, length, padding, false);
+    }
+
+    function are_we_comparing() {
+      if (g_readers.length < 2)
+        return false;
+      var cmp_mode = $('#cmp_mode').data('state');
+      if (cmp_mode == 0)
+        return false;
+      return true;
     }
 
     function add(reader) {
@@ -86,6 +96,11 @@
           $('#fmt').val(fmt);
 
           $('#slider').val(g_readers[idx].frame_num);
+        } else if (idx == g_ctx.second_reader_idx) {
+          if (are_we_comparing()) {
+            $(btn).css('background-color','white');
+            $(btn).css('color','green');
+          }
         }
       });
     }
@@ -106,8 +121,15 @@
 
       var readers = [];
       readers.push(g_readers[g_ctx.reader_idx]);
-      var channel = $('#chan').text().toLowerCase();
-      var rgb = proc(readers, channel);
+      var channel = $('#chan').data('state');
+      var cmp_mode = $('#cmp_mode').data('state');
+      if (cmp_mode > 0) {
+        if (g_ctx.second_reader_idx != g_ctx.reader_idx) {
+          readers.push(g_readers[g_ctx.second_reader_idx]);
+        }
+      }
+
+      var rgb = proc(readers, channel, cmp_mode);
       var canvas = document.getElementById('canvas');
       canvas.width = rgb.width;
       canvas.height = rgb.height;
@@ -133,12 +155,12 @@
 
     function zoom() {
       var state = $('#zoom').data('state');
-      var $zoom_window = $('#zoom_window');
-      if ($zoom_window.length)
-        $zoom_window.remove();
-      var $zoom_highlight = $('#zoom_highlight');
-      if ($zoom_highlight.length)
-        $zoom_highlight.remove();
+      var $zoom_value = $('#zoom_value');
+      if ($zoom_value.length)
+        $zoom_value.remove();
+      var $zoom_frame = $('#zoom_frame');
+      if ($zoom_frame.length)
+        $zoom_frame.remove();
       if (state == 0 || g_readers.length == 0)
         return;
       const zoom_wh = 8;
@@ -170,53 +192,42 @@
           sum_y += yuv[0];
         }
       }
-      $zoom_window = $('<div>', {id: 'zoom_window'});
-      $zoom_window.css('position', 'absolute');
-      $zoom_window.css('top', g_ctx.mouse_y);
-      $zoom_window.css('left', g_ctx.mouse_x + 8);
+      $zoom_value = $('<div>', {id: 'zoom_value'});
+      $zoom_value.css('position', 'absolute');
+      $zoom_value.css('top', g_ctx.mouse_y);
+      $zoom_value.css('left', g_ctx.mouse_x + 8);
+      $zoom_value.css('pointer-events', 'none');
 
-      var $div = $('<div>');
-      var $pre = $('<pre>');
-      $pre.css('background-color', 'gray');
-      $pre.css('color', 'white');
-      $pre.append(val_y);
-      $div.append($pre);
-      $zoom_window.append($div);
-
-      $div = $('<div>');
-      $pre = $('<pre>');
-      $div.css('display', 'inline-block');
-      $pre.css('background-color', 'gray');
-      $pre.css('color', 'blue');
-      $pre.append(val_u);
-      $div.append($pre);
-      $zoom_window.append($div);
-
-      $div = $('<div>');
-      $pre = $('<pre>');
-      $div.css('display', 'inline-block');
-      $pre.css('background-color', 'gray');
-      $pre.css('color', 'red');
-      $pre.append(val_v);
-      $div.append($pre);
-      $zoom_window.append($div);
+      var font_color = ['black', 'blue', 'red'];
+      for (var i = 0; i < 3; ++i) {
+        var $div = $('<div>');
+        var $pre = $('<pre>');
+        if (i > 0)
+          $div.css('display', 'inline-block');
+        $pre.css('background-color', 'whitesmoke');
+        $pre.css('color', font_color[i]);
+        $pre.append(i == 0? val_y : (i == 1? val_u : val_v));
+        $div.append($pre);
+        $zoom_value.append($div);
+      }
 
       // Highlight zoom area.
       var luma = Math.floor(sum_y / (zoom_wh * zoom_wh) - 128);
       if (luma < 0)
         luma += 255;
-      var $zoom_highlight = $('<div>', {id: 'zoom_highlight', css: {
+      var $zoom_frame = $('<div>', {id: 'zoom_frame', css: {
           position: 'absolute',
           top: zoom_y,
           left: zoom_x,
           width: zoom_wh,
           height: zoom_wh}});
-      $zoom_highlight.css('border', '1px solid');
-      $zoom_highlight.css('border-color',
+      $zoom_frame.css('border', '1px solid');
+      $zoom_frame.css('border-color',
           'rgb(' + luma + ',' + luma + ',' + luma + ')');
+      $zoom_frame.css('pointer-events', 'none');
 
-      $('#canvas_zone').append($zoom_highlight);
-      $('#canvas_zone').append($zoom_window);
+      $('#canvas_zone').append($zoom_frame);
+      $('#canvas_zone').append($zoom_value);
     }
 
     function grid() {
@@ -292,19 +303,21 @@
 
     $('#files').change(function(e) {
       $('#open').remove();
-      var reader = new FrameReader();
-      reader.open(e.target.files[0],
-          function(success) {
-            if (success) {
-              add(reader);
-            } else {
-              alert('Cannot open ' + e.target.files[0]);
-            }
-          },
-          g_ctx.default_width,
-          g_ctx.default_height,
-          g_ctx.default_pix_fmt
-      );
+      for (var i = 0; i < e.target.files.length; ++i) {
+        var reader = new FrameReader();
+        reader.open(e.target.files[i],
+            function(success) {
+              if (success) {
+                add(reader);
+              } else {
+                alert('Cannot open ' + e.target.files[i]);
+              }
+            },
+            g_ctx.default_width,
+            g_ctx.default_height,
+            g_ctx.default_pix_fmt
+        );
+      }
     });
 
     $(document).ready(function() {
@@ -345,13 +358,15 @@
       $('#menu').append($fmt);
 
       var $chan = $('<button>', {id: 'chan', text: 'YUV', css: {width:'6ch'}});
+      $chan.data('state', 0);
       $chan.click(function() {
         const opts = ['YUV',' Y','U','V'];
-        var idx = opts.indexOf($(this).text());
-        if (++idx >= opts.length)
-          idx = 0;
-        update_btn($(this), idx);
-        $(this).text(opts[idx]);
+        var state = $(this).data('state');
+        if (++state >= opts.length)
+          state = 0;
+        $(this).data('state', state);
+        update_btn($(this), state != 0);
+        $(this).text(opts[state]);
         show();
       });
       $('#menu').append($chan);
@@ -359,11 +374,12 @@
       var $grid = $('<button>', {id: 'grid', text: 'G', css: {width:'4ch'}});
       $grid.click(function() {
         const opts = ['G',' 16','32','64'];
-        var idx = opts.indexOf($(this).text());
-        if (++idx >= opts.length)
-          idx = 0;
-        update_btn($(this), idx);
-        $(this).text(opts[idx]);
+        var state = $(this).data('state');
+        if (++state >= opts.length)
+          state = 0;
+        $(this).data('state', state);
+        update_btn($(this), state != 0);
+        $(this).text(opts[state]);
         show();
       });
       $('#menu').append($grid);
@@ -386,6 +402,20 @@
         update_btn($(this), state);
       });
       $('#menu').append($hist);
+
+      var $cmp_mode = $('<button>', {id: 'cmp_mode', text: 'C'});
+      $cmp_mode.data('state', 0);
+      $cmp_mode.click(function() {
+        const opts = ['C','S','E'];
+        var state = $(this).data('state');
+        if (++state >= opts.length)
+          state = 0;
+        $(this).data('state', state);
+        update_btn($(this), state != 0);
+        $(this).text(opts[state]);
+        show();
+      });
+      $('#menu').append($cmp_mode);
 
       $('#slider').on('input', function() {
         g_ctx.frame_num = parseInt($(this).val());
