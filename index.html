@@ -52,8 +52,8 @@
     function are_we_comparing() {
       if (g_readers.length < 2)
         return false;
-      var cmp_mode = $('#cmp_mode').data('state');
-      if (cmp_mode == 0)
+      var cmp = $('#cmp').data('state');
+      if (cmp == 0)
         return false;
       return true;
     }
@@ -70,7 +70,14 @@
       var $btn = $('<button>', {class:'button-file', title:reader.file.name});
       $btn.data('reader_idx', g_readers.length - 1);
       $btn.click(function() {
-        g_ctx.reader_idx = $(this).data('reader_idx');
+        var reader_idx = $(this).data('reader_idx');
+        if (reader_idx == g_ctx.reader_idx && are_we_comparing()) {
+          reader_idx = g_ctx.second_reader_idx;
+        }
+        if (reader_idx == g_ctx.second_reader_idx) {
+          g_ctx.second_reader_idx = g_ctx.reader_idx;
+        }
+        g_ctx.reader_idx = reader_idx;
         seek(g_ctx.frame_num);
       });
       $('#menu').append($btn);
@@ -98,8 +105,8 @@
           $('#slider').val(g_readers[idx].frame_num);
         } else if (idx == g_ctx.second_reader_idx) {
           if (are_we_comparing()) {
-            $(btn).css('background-color','white');
-            $(btn).css('color','green');
+            $(btn).css('background-color','red');
+            $(btn).css('color','white');
           }
         }
       });
@@ -122,14 +129,14 @@
       var readers = [];
       readers.push(g_readers[g_ctx.reader_idx]);
       var channel = $('#chan').data('state');
-      var cmp_mode = $('#cmp_mode').data('state');
-      if (cmp_mode > 0) {
+      var cmp = $('#cmp').data('state');
+      if (cmp > 0) {
         if (g_ctx.second_reader_idx != g_ctx.reader_idx) {
           readers.push(g_readers[g_ctx.second_reader_idx]);
         }
       }
 
-      var rgb = proc(readers, channel, cmp_mode);
+      var rgb = proc(readers, channel, cmp);
       var canvas = document.getElementById('canvas');
       canvas.width = rgb.width;
       canvas.height = rgb.height;
@@ -259,6 +266,13 @@
       g_ctx.mouse_x = Math.max(0, e.clientX - r.left);
       g_ctx.mouse_y = Math.max(0, e.clientY - r.top);
       zoom();
+
+      if (!($('#grid').text() == 'G' || g_readers.length == 0)) {
+        var grid_size = parseInt($('#grid').text());
+        coord_x = Math.round(g_ctx.mouse_x / grid_size);
+        coord_y = Math.round(g_ctx.mouse_y / grid_size);
+        window.status = coord_x.toString() + 'x' + coord_y.toString();
+      }
     });
 
     var key_code = {
@@ -286,6 +300,9 @@
           break;
         case key_code.Y:
           $('#chan').trigger('click');
+          break;
+        case key_code.C:
+          $('#cmp').trigger('click');
           break;
       }
 
@@ -372,6 +389,7 @@
       $('#menu').append($chan);
 
       var $grid = $('<button>', {id: 'grid', text: 'G', css: {width:'4ch'}});
+      $grid.data('state', 0);
       $grid.click(function() {
         const opts = ['G',' 16','32','64'];
         var state = $(this).data('state');
@@ -403,9 +421,9 @@
       });
       $('#menu').append($hist);
 
-      var $cmp_mode = $('<button>', {id: 'cmp_mode', text: 'C'});
-      $cmp_mode.data('state', 0);
-      $cmp_mode.click(function() {
+      var $cmp = $('<button>', {id: 'cmp', text: 'C'});
+      $cmp.data('state', 0);
+      $cmp.click(function() {
         const opts = ['C','S','E'];
         var state = $(this).data('state');
         if (++state >= opts.length)
@@ -413,9 +431,10 @@
         $(this).data('state', state);
         update_btn($(this), state != 0);
         $(this).text(opts[state]);
+        update_cnt();
         show();
       });
-      $('#menu').append($cmp_mode);
+      $('#menu').append($cmp);
 
       $('#slider').on('input', function() {
         g_ctx.frame_num = parseInt($(this).val());

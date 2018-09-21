@@ -4,8 +4,8 @@ function proc(readers, channel, cmp_mode, qmetric, grid) {
   var width = readers[0].width;
   var height = readers[0].height;
   if (readers.length > 1) {
-    width = Math.max(width, readers[1].width);
-    height = Math.max(height, readers[1].height);
+    width = Math.min(width, readers[1].width);
+    height = Math.min(height, readers[1].height);
   }
 
   var blk_width = grid? grid : width;
@@ -16,31 +16,34 @@ function proc(readers, channel, cmp_mode, qmetric, grid) {
     for (var px = 0; px < width; ++px) {
       var p1  = readers[0].yuv(py, px);
       var p2 = readers.length > 1? readers[1].yuv(py, px) : p1;
-      if (channel == 2) {
-        p1[0] = p1[1];
-        p2[0] = p2[1];
-      } else if (channel == 3) {
-        p1[0] = p1[2];
-        p2[0] = p2[2];
-      }
+
       if (channel != 0) {
+        if (channel == 2) {
+          p1[0] = p1[1];
+          p2[0] = p2[1];
+        } else if (channel == 3) {
+          p1[0] = p1[2];
+          p2[0] = p2[2];
+        }
+
         p1[1] = p1[2] = 128;
         p2[1] = p2[2] = 128;
       }
 
       if (cmp_mode > 0) {
-        var y = p1[0] - p2[0];
-        var u = p1[1] - p2[1];
-        var v = p1[2] - p2[2];
+        var dy = Math.abs(p1[0] - p2[0]);
+        var du = Math.abs(p1[1] - p2[1]);
+        var dv = Math.abs(p1[2] - p2[2]);
+
         if (cmp_mode == 1) {
-          p1[0] = y < 0? y + 255 : y;
-          p1[1] = u < 0? u + 255 : u;
-          p1[2] = v < 0? v + 255 : v;
+          p1[0] = dy;
+          p1[1] = du + 128;
+          p1[2] = dv + 128;
         } else {
-          var d = !!y | !!u | !!v;
-          p1[0] = 255 * d;
-          p1[1] = 255 * d;
-          p1[2] = 255 * d;
+          var d = dy | du | dv;
+          p1[0] = 255 * !!d;
+          p1[1] = 128;
+          p1[2] = 128;
         }
       }
 
