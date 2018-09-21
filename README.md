@@ -1,3 +1,3 @@
-Another YUV viewer.
+Yet another YUV viewer.
 
 https://ssilkin.github.io/yv/
