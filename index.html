@@ -60,12 +60,7 @@
 
     function add(reader) {
       g_readers.push(reader);
-      g_ctx.num_frames = 0;
-      for (var i = 0; i < g_readers.length; ++i)
-        g_ctx.num_frames = Math.max(g_ctx.num_frames, g_readers[i].num_frames);
-      g_ctx.frame_num = Math.min(g_ctx.frame_num, g_ctx.num_frames - 1);
-
-      $('#slider').attr('max', g_ctx.num_frames - 1);
+      update_ctx();
 
       var $btn = $('<button>', {class:'button-file', title:reader.file.name});
       $btn.data('reader_idx', g_readers.length - 1);
@@ -82,6 +77,15 @@
       });
       $('#menu').append($btn);
       $btn.trigger('click');
+    }
+
+    function update_ctx() {
+      g_ctx.num_frames = 0;
+      for (var i = 0; i < g_readers.length; ++i)
+        g_ctx.num_frames = Math.max(g_ctx.num_frames, g_readers[i].num_frames);
+      g_ctx.frame_num = Math.min(g_ctx.frame_num, g_ctx.num_frames - 1);
+
+      $('#slider').attr('max', g_ctx.num_frames - 1);
     }
 
     function update_cnt() {
@@ -364,7 +368,10 @@
           if (g_readers.length) {
             g_readers[g_ctx.reader_idx].open(
                 g_readers[g_ctx.reader_idx].file,
-                function() { seek(g_ctx.frame_num); },
+                function(success) {
+                  update_ctx();
+                  seek(g_ctx.frame_num);
+                },
                 g_ctx.default_width,
                 g_ctx.default_height,
                 g_ctx.default_pix_fmt,
