@@ -6,7 +6,7 @@ function FrameReader() {
   this.width = 640;
   this.height = 360;
   this.frame_len = 0;
-  this.frame_inf = new Map();
+  this.frame_info = new Map();
   this.num_frames = 0;
   this.frame_num = 0;
 
@@ -17,37 +17,45 @@ function FrameReader() {
       var self = this;
       this.read(0, 100, function() {
         var y4m = self.parse_y4m_header(self.data, 0);
-        self.frame_inf.set(0, y4m);
+        self.frame_info.set(0, y4m);
         // Header of frame #0 contains extra fiels such as width, height, etc.
         // Below assumes that starting from frame #1 size of header is constant.
         self.seek(1, function() {
-          var frame_inf = self.frame_inf.get(1);
-          if (frame_inf) {
-            self.num_frames = Math.floor(1 + (self.file.size - frame_inf.pos) /
-                (frame_inf.header_len + frame_inf.frame_len));
+          var frame_info = self.frame_info.get(1);
+          if (frame_info) {
+            self.num_frames = Math.floor(
+                (self.file.size - frame_info.pos) /
+                    (frame_info.header_len + frame_info.frame_len) +
+                1);
           }
           callback(self.num_frames > 0);
         });
       });
     } else {
       if (!force_fmt) {
-        var m = file.name.toLowerCase().match(/([\d]{1,4})x([\d]{1,4})/);
+        var m = file.name.toLowerCase().match(
+            /[-_^]([\d]{1,4})x([\d]{1,4})[-_\.$]/);
         if (m) {
           width = m[1];
           height = m[2];
         } else {
           m = file.name.toLowerCase().match(/(1080|720|vga|qcif|cif)/);
           if (m) {
-            const wxh = {'1080':[1920,1080], '720':[1280,720],
-                'vga':[640,480], 'cif':[352, 288], 'qcif':[176, 144]};
+            const wxh = {
+              '1080': [1920, 1080],
+              '720': [1280, 720],
+              'vga': [640, 480],
+              'cif': [352, 288],
+              'qcif': [176, 144]
+            };
             width = wxh[m[1]][0];
             height = wxh[m[1]][1];
           }
         }
 
-        m = file.name.toLowerCase().match(/[-_](420|422|444|400|gray)/)
+        m = file.name.toLowerCase().match(/[-_](yv12|yv16|yv24|gray)/);
         if (m) {
-          pix_fmt = m[1] == '400'? 'gray' : m[1];
+          pix_fmt = m[1] == '400' ? 'gray' : m[1];
         }
       }
 
@@ -56,7 +64,7 @@ function FrameReader() {
       this.num_frames = Math.floor(this.file.size / this.frame_len);
       callback(this.num_frames > 0);
     }
-  }
+  };
 
   this.seek = function(frame_num, callback) {
     var self = this;
@@ -66,11 +74,11 @@ function FrameReader() {
         callback();
       });
     } else {
-      var frame_inf = this.frame_inf.get(frame_num);
-      if (frame_inf) {
-        const pos = frame_inf.pos + frame_inf.header_len;
-        this.read(pos, frame_inf.frame_len, function() {
-          self.set_params(frame_inf.w, frame_inf.h, frame_inf.c);
+      var frame_info = this.frame_info.get(frame_num);
+      if (frame_info) {
+        const pos = frame_info.pos + frame_info.header_len;
+        this.read(pos, frame_info.frame_len, function() {
+          self.set_params(frame_info.w, frame_info.h, frame_info.c);
           self.frame_num = frame_num;
           callback();
         });
@@ -79,41 +87,37 @@ function FrameReader() {
         // step frame-by-frame to requested one reading only headers of frames
         // in between.
         var prev_frame_num = frame_num - 1;
-        while (!this.frame_inf.get(prev_frame_num))
-          prev_frame_num--;
+        while (!this.frame_info.get(prev_frame_num)) prev_frame_num--;
 
-        var frame_inf = this.frame_inf.get(prev_frame_num);
-        if (frame_inf) {
-          const pos = frame_inf.pos +
-          frame_inf.header_len + frame_inf.frame_len;
+        var frame_info = this.frame_info.get(prev_frame_num);
+        if (frame_info) {
+          const pos =
+              frame_info.pos + frame_info.header_len + frame_info.frame_len;
           this.read(pos, 100, function() {
-            var y4m = self.parse_y4m_header(self.data, pos, frame_inf.w,
-                frame_inf.h, frame_inf.c);
-            self.frame_inf.set(prev_frame_num + 1, y4m);
-            setTimeout(function() { self.seek(frame_num, callback); }, 0);
+            var y4m = self.parse_y4m_header(
+                self.data, pos, frame_info.w, frame_info.h, frame_info.c);
+            self.frame_info.set(prev_frame_num + 1, y4m);
+            setTimeout(function() {
+              self.seek(frame_num, callback);
+            }, 0);
           });
         }
       }
     }
-  }
+  };
 
   this.yuv = function(py, px) {
-    var y, u, v;
+    var y, u = 128, v = 128;
     y = this.data[py * this.width + px];
-    if (this.pix_fmt == 'gray') {
-      u = 128;
-      v = 128;
-    } else {
-      var chroma_height = this.height >> this.chroma_vert_freq_log2;
-      var chroma_width = this.width >> this.chroma_horz_freq_log2;
-      var chroma_py = py >> this.chroma_vert_freq_log2;
-      var chroma_px = px >> this.chroma_horz_freq_log2;
-      u = this.data[this.height * this.width + chroma_py * chroma_width + chroma_px];
-      v = this.data[this.height * this.width + chroma_height * chroma_width
-          + chroma_py * chroma_width + chroma_px];
+    if (this.pix_fmt != 'gray') {
+      var chroma_xy = this.height * this.width +
+          (py >> this.chroma_vert_freq_log2) * this.chroma_width +
+          (px >> this.chroma_horz_freq_log2);
+      u = this.data[chroma_xy];
+      v = this.data[chroma_xy + this.chroma_height * this.chroma_width];
     }
     return [y, u, v];
-  }
+  };
 
   this.read = function(pos, bytes, callback) {
     if (this.file) {
@@ -124,24 +128,23 @@ function FrameReader() {
           self.data = new Uint8Array(evt.target.result);
           callback();
         }
-      }
+      };
       var blob = this.file.slice(pos, pos + bytes + 1);
       reader.readAsArrayBuffer(blob);
     }
-  }
+  };
 
   this.parse_y4m_header = function(data, pos, def_w, def_h, def_c) {
     var header = '';
     var length = 0;
     var found_frame = false;
-    while(length < data.length) {
+    while (length < data.length) {
       var byte = data[length++];
       if (header.length >= 5 && header.slice(header.length - 5) == 'FRAME') {
         found_frame = true;
       }
       if (byte == 0x0a) {
-          if (found_frame)
-            break;
+        if (found_frame) break;
         byte = 0x20;
       }
       header += String.fromCharCode(byte);
@@ -171,25 +174,36 @@ function FrameReader() {
     }
     y4m.pos = pos;
     return y4m;
-  }
+  };
 
   this.set_params = function(width, height, pix_fmt) {
     this.width = width;
     this.height = height;
-    this.pix_fmt = pix_fmt;
     this.chroma_horz_freq_log2 = 0;
     this.chroma_vert_freq_log2 = 0;
     this.frame_len = this.width * this.height;
-    if (this.pix_fmt == '444' || this.pix_fmt == 'yv24') {
+
+    var map = {
+      '400': 'gray',
+      '420': 'yv12',
+      '422': 'yv16',
+      '444': 'yv24',
+    };
+    this.pix_fmt = pix_fmt in map ? map[pix_fmt] : pix_fmt;
+
+    if (this.pix_fmt == 'yv24') {
       this.frame_len *= 3;
-    } else if (this.pix_fmt == '422' || this.pix_fmt == 'yv16') {
+    } else if (this.pix_fmt == 'yv16') {
       this.frame_len *= 2;
       this.chroma_horz_freq_log2 = 1;
-    } else if (this.pix_fmt == '420' || this.pix_fmt == 'yv12') {
+    } else if (this.pix_fmt == 'yv12') {
       this.frame_len *= 3;
       this.frame_len /= 2;
       this.chroma_horz_freq_log2 = 1;
       this.chroma_vert_freq_log2 = 1;
     }
-  }
-}
+
+    this.chroma_height = this.height >> this.chroma_vert_freq_log2;
+    this.chroma_width = this.width >> this.chroma_horz_freq_log2;
+  };
+};

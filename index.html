@@ -24,8 +24,9 @@
   <script src='./reader.js'></script>
   <script src='./proc.js'></script>
   <script>
-    var g_readers = [];
     var g_ctx = {
+      'readers' : [],
+      'shift' : [],
       'frame_num'  : 0,
       'num_frames' : 0,
       'reader_idx' : 0,
@@ -50,20 +51,19 @@
     }
 
     function are_we_comparing() {
-      if (g_readers.length < 2)
+      if (g_ctx.readers.length < 2)
         return false;
       var cmp = $('#cmp').data('state');
-      if (cmp == 0)
-        return false;
-      return true;
+      return cmp > 0;
     }
 
     function add(reader) {
-      g_readers.push(reader);
+      g_ctx.readers.push(reader);
+      g_ctx.shift.push(0);
       update_ctx();
 
       var $btn = $('<button>', {class:'button-file', title:reader.file.name});
-      $btn.data('reader_idx', g_readers.length - 1);
+      $btn.data('reader_idx', g_ctx.readers.length - 1);
       $btn.click(function() {
         var reader_idx = $(this).data('reader_idx');
         if (reader_idx == g_ctx.reader_idx && are_we_comparing()) {
@@ -81,19 +81,21 @@
 
     function update_ctx() {
       g_ctx.num_frames = 0;
-      for (var i = 0; i < g_readers.length; ++i)
-        g_ctx.num_frames = Math.max(g_ctx.num_frames, g_readers[i].num_frames);
+      for (var i = 0; i < g_ctx.readers.length; ++i) {
+        g_ctx.num_frames = Math.max(g_ctx.num_frames,
+                                    g_ctx.readers[i].num_frames);
+      }
       g_ctx.frame_num = Math.min(g_ctx.frame_num, g_ctx.num_frames - 1);
-
       $('#slider').attr('max', g_ctx.num_frames - 1);
     }
 
     function update_cnt() {
       $('.button-file').each(function(i, btn) {
         var idx = $(btn).data('reader_idx');
-        var file_name = g_readers[idx].file.name;
+        var file_name = g_ctx.readers[idx].file.name;
         var text = file_name.slice(0, Math.min(4, file_name.length)) + ' ' +
-            g_readers[idx].frame_num + '/' + (g_readers[idx].num_frames - 1);
+            (g_ctx.readers[idx].frame_num) + '/' +
+            (g_ctx.readers[idx].num_frames - 1);
         $(btn).html(text);
         $(btn).css('background-color','');
         $(btn).css('color','');
@@ -101,12 +103,10 @@
         if (idx == g_ctx.reader_idx) {
           $(btn).css('background-color','green');
           $(btn).css('color','white');
-
-          var fmt = '' + g_readers[idx].width + 'x' + g_readers[idx].height +
-              ' ' + g_readers[idx].pix_fmt;
+          var fmt = '' + g_ctx.readers[idx].width + 'x' +
+              g_ctx.readers[idx].height + ' ' + g_ctx.readers[idx].pix_fmt;
           $('#fmt').val(fmt);
-
-          $('#slider').val(g_readers[idx].frame_num);
+          $('#slider').val(g_ctx.readers[idx].frame_num);
         } else if (idx == g_ctx.second_reader_idx) {
           if (are_we_comparing()) {
             $(btn).css('background-color','red');
@@ -127,16 +127,16 @@
     }
 
     function show() {
-      if (g_readers.length == 0)
+      if (g_ctx.readers.length == 0)
         return;
 
       var readers = [];
-      readers.push(g_readers[g_ctx.reader_idx]);
+      readers.push(g_ctx.readers[g_ctx.reader_idx]);
       var channel = $('#chan').data('state');
       var cmp = $('#cmp').data('state');
       if (cmp > 0) {
         if (g_ctx.second_reader_idx != g_ctx.reader_idx) {
-          readers.push(g_readers[g_ctx.second_reader_idx]);
+          readers.push(g_ctx.readers[g_ctx.second_reader_idx]);
         }
       }
 
@@ -152,11 +152,12 @@
 
     function seek(frame_num) {
       var num_seeked = 0;
-      for (var i = 0; i < g_readers.length; ++i) {
-        var seek_to = Math.min(frame_num, g_readers[i].num_frames - 1);
-        g_readers[i].seek(seek_to, function() {
+      for (var i = 0; i < g_ctx.readers.length; ++i) {
+        var seek_to = Math.max(Math.min(frame_num + g_ctx.shift[i],
+            g_ctx.readers[i].num_frames - 1), 0);
+        g_ctx.readers[i].seek(seek_to, function() {
           num_seeked++;
-          if (num_seeked == g_readers.length) {
+          if (num_seeked == g_ctx.readers.length) {
             update_cnt();
             show();
           }
@@ -170,12 +171,14 @@
       if ($zoom_value.length)
         $zoom_value.remove();
       var $zoom_frame = $('#zoom_frame');
-      if ($zoom_frame.length)
+      if ($zoom_frame.length) {
         $zoom_frame.remove();
-      if (state == 0 || g_readers.length == 0)
+      }
+      if (state == 0 || g_ctx.readers.length == 0)
         return;
+
       const zoom_wh = 8;
-      var reader = g_readers[g_ctx.reader_idx];
+      var reader = g_ctx.readers[g_ctx.reader_idx];
       var zoom_x = Math.min(Math.max(g_ctx.mouse_x - zoom_wh, 0),
           reader.width - zoom_wh);
       var zoom_y = Math.min(Math.max(g_ctx.mouse_y - zoom_wh, 0),
@@ -193,6 +196,7 @@
             val_v += '<br>';
           }
         }
+
         for (var x = 0, px = zoom_x; x < zoom_wh; ++x, ++px) {
           const yuv = reader.yuv(py, px);
           val_y += tostr(yuv[0], 10, 4, ' ');
@@ -213,8 +217,9 @@
       for (var i = 0; i < 3; ++i) {
         var $div = $('<div>');
         var $pre = $('<pre>');
-        if (i > 0)
+        if (i > 0) {
           $div.css('display', 'inline-block');
+        }
         $pre.css('background-color', 'whitesmoke');
         $pre.css('color', font_color[i]);
         $pre.append(i == 0? val_y : (i == 1? val_u : val_v));
@@ -224,8 +229,9 @@
 
       // Highlight zoom area.
       var luma = Math.floor(sum_y / (zoom_wh * zoom_wh) - 128);
-      if (luma < 0)
+      if (luma < 0) {
         luma += 255;
+      }
       var $zoom_frame = $('<div>', {id: 'zoom_frame', css: {
           position: 'absolute',
           top: zoom_y,
@@ -242,7 +248,7 @@
     }
 
     function grid() {
-      if ($('#grid').text() == 'G' || g_readers.length == 0)
+      if ($('#grid').text() == 'G' || g_ctx.readers.length == 0)
         return;
       var canvas = document.getElementById('canvas');
       var ctx = canvas.getContext('2d');
@@ -258,8 +264,9 @@
             img.data[i + 1] = 255 - img.data[i + 1];
             img.data[i + 2] = 255 - img.data[i + 2];
           }
-          if (!draw_horz)
+          if (!draw_horz) {
             x += grid_size - 1;
+          }
         }
       }
       ctx.putImageData(img, 0, 0);
@@ -271,7 +278,7 @@
       g_ctx.mouse_y = Math.max(0, e.clientY - r.top);
       zoom();
 
-      if (!($('#grid').text() == 'G' || g_readers.length == 0)) {
+      if (!($('#grid').text() == 'G' || g_ctx.readers.length == 0)) {
         var grid_size = parseInt($('#grid').text());
         coord_x = Math.round(g_ctx.mouse_x / grid_size);
         coord_y = Math.round(g_ctx.mouse_y / grid_size);
@@ -290,10 +297,14 @@
       switch(key.which) {
         case key_code.LEFT:
         case key_code.RIGHT:
-          g_ctx.frame_num = g_ctx.frame_num +
-              (key.which == key_code.RIGHT? 1 : -1);
-          g_ctx.frame_num = Math.max(
-            Math.min(g_ctx.frame_num, g_ctx.num_frames - 1), 0);
+          var inc = key.which == key_code.RIGHT? 1 : -1;
+          if (key.shiftKey) {
+            g_ctx.shift[g_ctx.reader_idx] += inc;
+          } else {
+            g_ctx.frame_num += inc;
+            g_ctx.frame_num =
+                Math.max(Math.min(g_ctx.frame_num, g_ctx.num_frames - 1), 0);
+          }
           seek(g_ctx.frame_num);
           break;
         case key_code.G:
@@ -313,7 +324,7 @@
       if (key.which >= 49 && key.which <= 57) {
         //#1..9
         var n = key.which - 49;
-        if (n < g_readers.length) {
+        if (n < g_ctx.readers.length) {
           var $btn = $('.button-file').filter(function() {
             return $(this).data('reader_idx') == n;
           });
@@ -327,13 +338,15 @@
       for (var i = 0; i < e.target.files.length; ++i) {
         var reader = new FrameReader();
         reader.open(e.target.files[i],
-            function(success) {
-              if (success) {
-                add(reader);
-              } else {
-                alert('Cannot open ' + e.target.files[i]);
+            (function(reader, filename) {
+              return function(success) {
+                if (success) {
+                  add(reader);
+                } else {
+                  alert('Cannot open ' + finename);
+                }
               }
-            },
+            })(reader, e.target.files[i]),
             g_ctx.default_width,
             g_ctx.default_height,
             g_ctx.default_pix_fmt
@@ -365,9 +378,9 @@
             g_ctx.default_pix_fmt = m[1];
           }
 
-          if (g_readers.length) {
-            g_readers[g_ctx.reader_idx].open(
-                g_readers[g_ctx.reader_idx].file,
+          if (g_ctx.readers.length) {
+            g_ctx.readers[g_ctx.reader_idx].open(
+                g_ctx.readers[g_ctx.reader_idx].file,
                 function(success) {
                   update_ctx();
                   seek(g_ctx.frame_num);
@@ -386,8 +399,9 @@
       $chan.click(function() {
         const opts = ['YUV',' Y','U','V'];
         var state = $(this).data('state');
-        if (++state >= opts.length)
+        if (++state >= opts.length) {
           state = 0;
+        }
         $(this).data('state', state);
         update_btn($(this), state != 0);
         $(this).text(opts[state]);
@@ -400,8 +414,9 @@
       $grid.click(function() {
         const opts = ['G',' 16','32','64'];
         var state = $(this).data('state');
-        if (++state >= opts.length)
+        if (++state >= opts.length) {
           state = 0;
+        }
         $(this).data('state', state);
         update_btn($(this), state != 0);
         $(this).text(opts[state]);
@@ -433,8 +448,9 @@
       $cmp.click(function() {
         const opts = ['C','S','E'];
         var state = $(this).data('state');
-        if (++state >= opts.length)
+        if (++state >= opts.length) {
           state = 0;
+        }
         $(this).data('state', state);
         update_btn($(this), state != 0);
         $(this).text(opts[state]);
