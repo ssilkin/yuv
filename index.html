@@ -17,7 +17,6 @@
     <div id='menu'></div>
     <input type='range' id='slider' min=0 max=0 value=0></div>
     <div id='canvas_zone' style='position: relative;'>
-        <canvas id='canvas' width='0px' height='0px'></canvas>
     </div>
     <div id='log'></div>
   <script src='https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js'></script>
@@ -57,7 +56,7 @@
       return cmp > 0;
     }
 
-    function add(reader) {
+    function add_reader(reader) {
       g_ctx.readers.push(reader);
       g_ctx.shift.push(0);
       update_ctx();
@@ -93,7 +92,8 @@
       $('.button-file').each(function(i, btn) {
         var idx = $(btn).data('reader_idx');
         var file_name = g_ctx.readers[idx].file.name;
-        var text = file_name.slice(0, Math.min(4, file_name.length)) + ' ' +
+        var text = //file_name.slice(0, Math.min(4, file_name.length))
+            file_name + ' ' +
             (g_ctx.readers[idx].frame_num) + '/' +
             (g_ctx.readers[idx].num_frames - 1);
         $(btn).html(text);
@@ -126,28 +126,79 @@
       }
     }
 
-    function show() {
-      if (g_ctx.readers.length == 0)
-        return;
-
-      var readers = [];
-      readers.push(g_ctx.readers[g_ctx.reader_idx]);
+    function show_one(canvas, readers) {
       var channel = $('#chan').data('state');
       var cmp = $('#cmp').data('state');
-      if (cmp > 0) {
-        if (g_ctx.second_reader_idx != g_ctx.reader_idx) {
-          readers.push(g_ctx.readers[g_ctx.second_reader_idx]);
-        }
-      }
 
       var rgb = proc(readers, channel, cmp);
-      var canvas = document.getElementById('canvas');
       canvas.width = rgb.width;
       canvas.height = rgb.height;
       canvas.getContext('2d').putImageData(rgb, 0, 0);
 
       grid();
-      zoom();
+      //zoom();
+    }
+
+    function show_all() {
+      if (g_ctx.readers.length == 0)
+        return;
+
+      var split_view = $('#view').data('state');
+      var cmp = $('#cmp').data('state');
+
+      var readers = [];
+      if (split_view) {
+        if (cmp && g_ctx.readers.length > 1) {
+          for (var i = 0; i < 3; ++i) {
+            if (!document.getElementById('canvas' + i)) {
+              var $canvas= $('<canvas>', {id: 'canvas' + i});
+              $('#canvas_zone').append($canvas);
+            }
+
+            if (i == 0) {
+              show_one(document.getElementById('canvas0'),
+                  [g_ctx.readers[g_ctx.reader_idx]]);
+            } else if (i == 1) {
+              show_one(document.getElementById('canvas1'),
+                  [g_ctx.readers[g_ctx.second_reader_idx]]);
+            } else {
+              show_one(document.getElementById('canvas2'),
+                  [g_ctx.readers[g_ctx.reader_idx],
+                      g_ctx.readers[g_ctx.second_reader_idx]]);
+            }
+          }
+        } else {
+          for (var i = 0; i < g_ctx.readers.length; ++i) {
+            if (!document.getElementById('canvas' + i)) {
+              var $canvas= $('<canvas>', {id: 'canvas' + i});
+              $('#canvas_zone').append($canvas);
+            }
+            show_one(document.getElementById('canvas' + i), [g_ctx.readers[i]]);
+          }
+        }
+      } else {
+        if (!document.getElementById('canvas0')) {
+          var $canvas= $('<canvas>', {id: 'canvas0'});
+          $('#canvas_zone').append($canvas);
+        }
+
+        var readers = [];
+        readers.push(g_ctx.readers[g_ctx.reader_idx]);
+        if (cmp > 0) {
+          if (g_ctx.second_reader_idx != g_ctx.reader_idx) {
+            readers.push(g_ctx.readers[g_ctx.second_reader_idx]);
+          }
+        }
+
+        show_one(document.getElementById('canvas0'), readers);
+      }
+    }
+
+    function clear_canvas() {
+      var canvas_zone = document.getElementById('canvas_zone');
+      while (canvas_zone.firstChild) {
+        canvas_zone.removeChild(canvas_zone.firstChild);
+      }
     }
 
     function seek(frame_num) {
@@ -159,7 +210,7 @@
           num_seeked++;
           if (num_seeked == g_ctx.readers.length) {
             update_cnt();
-            show();
+            show_all();
           }
         });
       }
@@ -276,7 +327,7 @@
       var r = $('#canvas').get(0).getBoundingClientRect();
       g_ctx.mouse_x = Math.max(0, e.clientX - r.left);
       g_ctx.mouse_y = Math.max(0, e.clientY - r.top);
-      zoom();
+      //zoom();
 
       if (!($('#grid').text() == 'G' || g_ctx.readers.length == 0)) {
         var grid_size = parseInt($('#grid').text());
@@ -319,6 +370,9 @@
         case key_code.C:
           $('#cmp').trigger('click');
           break;
+        case key_code.S:
+          $('#view').trigger('click');
+          break;
       }
 
       if (key.which >= 49 && key.which <= 57) {
@@ -341,7 +395,7 @@
             (function(reader, filename) {
               return function(success) {
                 if (success) {
-                  add(reader);
+                  add_reader(reader);
                 } else {
                   alert('Cannot open ' + finename);
                 }
@@ -405,11 +459,11 @@
         $(this).data('state', state);
         update_btn($(this), state != 0);
         $(this).text(opts[state]);
-        show();
+        show_all();
       });
       $('#menu').append($chan);
 
-      var $grid = $('<button>', {id: 'grid', text: 'G', css: {width:'4ch'}});
+      var $grid = $('<button>', {id: 'grid', text: 'G', title: 'Overlay grid', css: {width:'4ch'}});
       $grid.data('state', 0);
       $grid.click(function() {
         const opts = ['G',' 16','32','64'];
@@ -420,11 +474,11 @@
         $(this).data('state', state);
         update_btn($(this), state != 0);
         $(this).text(opts[state]);
-        show();
+        show_all();
       });
       $('#menu').append($grid);
 
-      var $zoom = $('<button>', {id: 'zoom', text: 'Z'});
+      var $zoom = $('<button>', {id: 'zoom', text: 'Z', title: 'Zoom'});
       $zoom.data('state', 0);
       $zoom.click(function() {
         var state = $(this).data('state') ^ 1;
@@ -434,7 +488,7 @@
       });
       $('#menu').append($zoom);
 
-      var $hist = $('<button>', {id: 'hist', text: 'H'});
+      var $hist = $('<button>', {id: 'hist', text: 'H', title: 'Histogram'});
       $hist.data('state', 0);
       $hist.click(function() {
         var state = $(this).data('state') ^ 1;
@@ -443,7 +497,7 @@
       });
       $('#menu').append($hist);
 
-      var $cmp = $('<button>', {id: 'cmp', text: 'C'});
+      var $cmp = $('<button>', {id: 'cmp', text: 'C', title: 'Compare'});
       $cmp.data('state', 0);
       $cmp.click(function() {
         const opts = ['C','S','E'];
@@ -455,9 +509,26 @@
         update_btn($(this), state != 0);
         $(this).text(opts[state]);
         update_cnt();
-        show();
+        clear_canvas();
+        show_all();
       });
       $('#menu').append($cmp);
+
+      var $view = $('<button>', {id: 'view', text: 'S', title: 'Split view'});
+      $view.data('state', 0);
+      $view.click(function() {
+        const opts = ['S','S'];
+        var state = $(this).data('state');
+        if (++state >= opts.length) {
+          state = 0;
+        }
+        $(this).data('state', state);
+        update_btn($(this), state != 0);
+        $(this).text(opts[state]);
+        clear_canvas();
+        show_all();
+      });
+      $('#menu').append($view);
 
       $('#slider').on('input', function() {
         g_ctx.frame_num = parseInt($(this).val());
