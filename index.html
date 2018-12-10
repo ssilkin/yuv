@@ -15,7 +15,7 @@
       <input type='file' id='files' multiple>
     </div>
     <div id='menu'></div>
-    <input type='range' id='slider' min=0 max=0 value=0></div>
+    <input type='range' id='slider' min=0 max=0 value=0 style='width:300px;'></div>
     <div id='canvas_zone' style='position: relative;'>
     </div>
     <div id='log'></div>
@@ -126,16 +126,22 @@
       }
     }
 
-    function show_one(canvas, readers) {
+    function show_one(canvas_idx, readers) {
       var channel = $('#chan').data('state');
       var cmp = $('#cmp').data('state');
-
       var rgb = proc(readers, channel, cmp);
+
+      if (!document.getElementById('canvas' + canvas_idx)) {
+        var $canvas= $('<canvas>', {id: 'canvas' + canvas_idx});
+        $('#canvas_zone').append($canvas);
+      }
+
+      var canvas = document.getElementById('canvas' + canvas_idx);
       canvas.width = rgb.width;
       canvas.height = rgb.height;
       canvas.getContext('2d').putImageData(rgb, 0, 0);
 
-      grid();
+      grid(canvas);
       //zoom();
     }
 
@@ -147,41 +153,7 @@
       var cmp = $('#cmp').data('state');
 
       var readers = [];
-      if (split_view) {
-        if (cmp && g_ctx.readers.length > 1) {
-          for (var i = 0; i < 3; ++i) {
-            if (!document.getElementById('canvas' + i)) {
-              var $canvas= $('<canvas>', {id: 'canvas' + i});
-              $('#canvas_zone').append($canvas);
-            }
-
-            if (i == 0) {
-              show_one(document.getElementById('canvas0'),
-                  [g_ctx.readers[g_ctx.reader_idx]]);
-            } else if (i == 1) {
-              show_one(document.getElementById('canvas1'),
-                  [g_ctx.readers[g_ctx.second_reader_idx]]);
-            } else {
-              show_one(document.getElementById('canvas2'),
-                  [g_ctx.readers[g_ctx.reader_idx],
-                      g_ctx.readers[g_ctx.second_reader_idx]]);
-            }
-          }
-        } else {
-          for (var i = 0; i < g_ctx.readers.length; ++i) {
-            if (!document.getElementById('canvas' + i)) {
-              var $canvas= $('<canvas>', {id: 'canvas' + i});
-              $('#canvas_zone').append($canvas);
-            }
-            show_one(document.getElementById('canvas' + i), [g_ctx.readers[i]]);
-          }
-        }
-      } else {
-        if (!document.getElementById('canvas0')) {
-          var $canvas= $('<canvas>', {id: 'canvas0'});
-          $('#canvas_zone').append($canvas);
-        }
-
+      if (!split_view) {
         var readers = [];
         readers.push(g_ctx.readers[g_ctx.reader_idx]);
         if (cmp > 0) {
@@ -189,8 +161,22 @@
             readers.push(g_ctx.readers[g_ctx.second_reader_idx]);
           }
         }
-
-        show_one(document.getElementById('canvas0'), readers);
+        show_one(0, readers);
+      } else if (cmp && g_ctx.readers.length > 1) {
+        for (var i = 0; i < 3; ++i) {
+          if (i == 0) {
+            show_one(i, [g_ctx.readers[g_ctx.reader_idx]]);
+          } else if (i == 1) {
+            show_one(i, [g_ctx.readers[g_ctx.second_reader_idx]]);
+          } else {
+            show_one(i, [g_ctx.readers[g_ctx.reader_idx],
+                          g_ctx.readers[g_ctx.second_reader_idx]]);
+          }
+        }
+      } else {
+        for (var i = 0; i < g_ctx.readers.length; ++i) {
+          show_one(i, [g_ctx.readers[i]]);
+        }
       }
     }
 
@@ -298,10 +284,9 @@
       $('#canvas_zone').append($zoom_value);
     }
 
-    function grid() {
+    function grid(canvas) {
       if ($('#grid').text() == 'G' || g_ctx.readers.length == 0)
         return;
-      var canvas = document.getElementById('canvas');
       var ctx = canvas.getContext('2d');
       var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       var grid_size = parseInt($('#grid').text());
@@ -370,7 +355,7 @@
         case key_code.C:
           $('#cmp').trigger('click');
           break;
-        case key_code.S:
+        case key_code.V:
           $('#view').trigger('click');
           break;
       }
@@ -514,17 +499,13 @@
       });
       $('#menu').append($cmp);
 
-      var $view = $('<button>', {id: 'view', text: 'S', title: 'Split view'});
+      var $view = $('<button>', {id: 'view', text: 'V', title: 'Split view'});
       $view.data('state', 0);
       $view.click(function() {
-        const opts = ['S','S'];
         var state = $(this).data('state');
-        if (++state >= opts.length) {
-          state = 0;
-        }
+        state ^= 1;
         $(this).data('state', state);
         update_btn($(this), state != 0);
-        $(this).text(opts[state]);
         clear_canvas();
         show_all();
       });
