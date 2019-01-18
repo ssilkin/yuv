@@ -142,7 +142,7 @@
       canvas.getContext('2d').putImageData(rgb, 0, 0);
 
       grid(canvas);
-      //zoom();
+      zoom();
     }
 
     function show_all() {
@@ -308,11 +308,11 @@
       ctx.putImageData(img, 0, 0);
     }
 
-    $( '#canvas' ).mousemove(function(e) {
-      var r = $('#canvas').get(0).getBoundingClientRect();
+    $( '#canvas_zone' ).mousemove(function(e) {
+      var r = $('#canvas0').get(0).getBoundingClientRect();
       g_ctx.mouse_x = Math.max(0, e.clientX - r.left);
       g_ctx.mouse_y = Math.max(0, e.clientY - r.top);
-      //zoom();
+      zoom();
 
       if (!($('#grid').text() == 'G' || g_ctx.readers.length == 0)) {
         var grid_size = parseInt($('#grid').text());
