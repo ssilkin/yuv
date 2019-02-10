@@ -53,7 +53,8 @@
       if (g_ctx.readers.length < 2)
         return false;
       var cmp = $('#cmp').data('state');
-      return cmp > 0;
+      var quality = $('#quality').data('state');
+      return cmp > 0 || quality > 0;
     }
 
     function add_reader(reader) {
@@ -129,7 +130,9 @@
     function show_one(canvas_idx, readers) {
       var channel = $('#chan').data('state');
       var cmp = $('#cmp').data('state');
-      var rgb = proc(readers, channel, cmp);
+      var quality = $('#quality').data('state');
+      var quality_result = {};
+      var rgb = proc(readers, channel, cmp, quality, quality_result);
 
       if (!document.getElementById('canvas' + canvas_idx)) {
         var $canvas= $('<canvas>', {id: 'canvas' + canvas_idx});
@@ -143,6 +146,11 @@
 
       grid(canvas);
       zoom();
+
+      if ('psnr_y' in quality_result) {
+        canvas.getContext('2d').fillStyle = 'pink';
+        canvas.getContext('2d').fillText(quality_result.psnr_y.toFixed(2), 1, 8);
+      }
     }
 
     function show_all() {
@@ -150,13 +158,13 @@
         return;
 
       var split_view = $('#view').data('state');
-      var cmp = $('#cmp').data('state');
+      var cmp = are_we_comparing();
 
       var readers = [];
       if (!split_view) {
         var readers = [];
         readers.push(g_ctx.readers[g_ctx.reader_idx]);
-        if (cmp > 0) {
+        if (cmp) {
           if (g_ctx.second_reader_idx != g_ctx.reader_idx) {
             readers.push(g_ctx.readers[g_ctx.second_reader_idx]);
           }
@@ -355,6 +363,9 @@
         case key_code.C:
           $('#cmp').trigger('click');
           break;
+        case key_code.Q:
+          $('#quality').trigger('click');
+          break;
         case key_code.V:
           $('#view').trigger('click');
           break;
@@ -498,6 +509,23 @@
         show_all();
       });
       $('#menu').append($cmp);
+
+      var $quality = $('<button>', {id: 'quality', text: 'PSNR', title: 'Quality metric'});
+      $quality.data('state', 0);
+      $quality.click(function() {
+        const opts = ['PSNR', 'PSNR'];
+        var state = $(this).data('state');
+        if (++state >= opts.length) {
+          state = 0;
+        }
+        $(this).data('state', state);
+        update_btn($(this), state != 0);
+        $(this).text(opts[state]);
+        update_cnt();
+        clear_canvas();
+        show_all();
+      });
+      $('#menu').append($quality);
 
       var $view = $('<button>', {id: 'view', text: 'V', title: 'Split view'});
       $view.data('state', 0);

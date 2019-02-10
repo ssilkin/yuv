@@ -1,6 +1,7 @@
-function proc(readers, channel, cmp_mode, qmetric, grid) {
+function proc(readers, channel, cmp_mode, quality_metric, quality_result) {
   channel = channel || 0;
   cmp_mode = readers.length > 1 ? (cmp_mode || 0) : 0;
+  quality_metric = readers.length > 1 ? (quality_metric || 0) : 0;
   var width = readers[0].width;
   var height = readers[0].height;
   if (readers.length > 1) {
@@ -8,8 +9,7 @@ function proc(readers, channel, cmp_mode, qmetric, grid) {
     height = Math.min(height, readers[1].height);
   }
 
-  var blk_width = grid ? grid : width;
-  var blk_height = grid ? grid : height;
+  var mse_y = 0;
 
   var rgb = new ImageData(width, height);
   for (var py = 0; py < height; ++py) {
@@ -30,7 +30,7 @@ function proc(readers, channel, cmp_mode, qmetric, grid) {
         p2[1] = p2[2] = 128;
       }
 
-      if (cmp_mode > 0) {
+      if (cmp_mode > 0 || quality_metric > 0) {
         var dy = Math.abs(p1[0] - p2[0]);
         var du = Math.abs(p1[1] - p2[1]);
         var dv = Math.abs(p1[2] - p2[2]);
@@ -39,11 +39,15 @@ function proc(readers, channel, cmp_mode, qmetric, grid) {
           p1[0] = dy;
           p1[1] = du + 128;
           p1[2] = dv + 128;
-        } else {
+        } else if (cmp_mode == 2) {
           var d = dy | du | dv;
           p1[0] = 255 * !!d;
           p1[1] = 128;
           p1[2] = 128;
+        }
+
+        if (quality_metric == 1) {
+          mse_y += dy * dy;
         }
       }
 
@@ -62,5 +66,14 @@ function proc(readers, channel, cmp_mode, qmetric, grid) {
     }
   }
 
+  if (quality_metric == 1) {
+    quality_result['psnr_y'] = 20 * log10(255)
+        - 10 * log10(1.0 * Math.max(mse_y,1) / (width * height));
+  }
+
   return rgb;
+}
+
+function log10(val) {
+  return Math.log(val) / Math.LN10;
 }
