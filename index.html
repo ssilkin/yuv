@@ -539,7 +539,7 @@
       });
       $('#menu').append($view);
 
-      $('#slider').on('input', function() {
+      $('#slider').on('change', function() {
         g_ctx.frame_num = parseInt($(this).val());
         seek(g_ctx.frame_num);
       });
