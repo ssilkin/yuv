@@ -6,7 +6,7 @@ function FrameReader() {
   this.width = 640;
   this.height = 360;
   this.frame_len = 0;
-  this.frame_info = new Map();
+  this.frame_info = [];
   this.num_frames = 0;
   this.frame_num = 0;
 
@@ -17,12 +17,12 @@ function FrameReader() {
       var self = this;
       this.read(0, 100, function() {
         var y4m = self.parse_y4m_header(self.data, 0);
-        self.frame_info.set(0, y4m);
+        self.frame_info.push(y4m);
         // Header of frame #0 contains extra fiels such as width, height, etc.
         // Below assumes that starting from frame #1 size of header is constant.
         self.seek(1, function() {
-          var frame_info = self.frame_info.get(1);
-          if (frame_info) {
+          if (self.frame_info.length > 1) {
+            var frame_info = self.frame_info[1];
             self.num_frames = Math.floor(
                 (self.file.size - frame_info.pos) /
                     (frame_info.header_len + frame_info.frame_len) +
@@ -73,36 +73,27 @@ function FrameReader() {
         self.frame_num = frame_num;
         callback();
       });
-    } else {
-      var frame_info = this.frame_info.get(frame_num);
-      if (frame_info) {
+    } else if (this.frame_info.length > frame_num) {
+        var frame_info = this.frame_info[frame_num];
         const pos = frame_info.pos + frame_info.header_len;
         this.read(pos, frame_info.frame_len, function() {
           self.set_params(frame_info.w, frame_info.h, frame_info.c);
           self.frame_num = frame_num;
           callback();
         });
-      } else {
+    } else if (this.frame_info.length > 0) {
         // Requested frame was not read before. Find last read frame and
         // step frame-by-frame to requested one reading only headers of frames
         // in between.
-        var prev_frame_num = frame_num - 1;
-        while (!this.frame_info.get(prev_frame_num)) prev_frame_num--;
-
-        var frame_info = this.frame_info.get(prev_frame_num);
-        if (frame_info) {
-          const pos =
-              frame_info.pos + frame_info.header_len + frame_info.frame_len;
-          this.read(pos, 100, function() {
-            var y4m = self.parse_y4m_header(
-                self.data, pos, frame_info.w, frame_info.h, frame_info.c);
-            self.frame_info.set(prev_frame_num + 1, y4m);
-            setTimeout(function() {
-              self.seek(frame_num, callback);
-            }, 0);
-          });
-        }
-      }
+        var frame_info = this.frame_info[this.frame_info.length - 1];
+        const pos = frame_info.pos + frame_info.header_len + frame_info.frame_len;
+        this.read(pos, 100, function() {
+          var y4m = self.parse_y4m_header(self.data, pos, frame_info.w, frame_info.h, frame_info.c);
+          self.frame_info.push(y4m);
+          setTimeout(function() {
+            self.seek(frame_num, callback);
+          }, 0);
+        });
     }
   };
 
@@ -110,11 +101,12 @@ function FrameReader() {
     var y, u = 128, v = 128;
     y = this.data[py * this.width + px];
     if (this.pix_fmt != 'gray') {
-      var chroma_xy = this.height * this.width +
-          (py >> this.chroma_vert_freq_log2) * this.chroma_width +
-          (px >> this.chroma_horz_freq_log2);
-      u = this.data[chroma_xy];
-      v = this.data[chroma_xy + this.chroma_height * this.chroma_width];
+      var chroma_pix_offset = (py >> this.chroma_vert_freq_log2) * this.chroma_line_sz +
+          (px >> this.chroma_horz_freq_log2) * this.chroma_pix_sz;
+      var chroma_u_pos = this.chroma_u_offset + chroma_pix_offset;
+      var chroma_v_pos = this.chroma_v_offset + chroma_pix_offset;
+      u = this.data[chroma_u_pos];
+      v = this.data[chroma_v_pos];
     }
     return [y, u, v];
   };
@@ -181,6 +173,8 @@ function FrameReader() {
     this.height = height;
     this.chroma_horz_freq_log2 = 0;
     this.chroma_vert_freq_log2 = 0;
+    this.chroma_line_sz = width;
+    this.chroma_pix_sz = 1;
     this.frame_len = this.width * this.height;
 
     var map = {
@@ -193,17 +187,30 @@ function FrameReader() {
 
     if (this.pix_fmt == 'yv24') {
       this.frame_len *= 3;
+      this.chroma_u_offset = width * height;
+      this.chroma_v_offset = width * height * 2;
     } else if (this.pix_fmt == 'yv16') {
       this.frame_len *= 2;
       this.chroma_horz_freq_log2 = 1;
+      this.chroma_u_offset = width * height;
+      this.chroma_v_offset = width * height + width * height / 2;
     } else if (this.pix_fmt == 'yv12') {
       this.frame_len *= 3;
       this.frame_len /= 2;
       this.chroma_horz_freq_log2 = 1;
       this.chroma_vert_freq_log2 = 1;
+      this.chroma_u_offset = width * height;
+      this.chroma_v_offset = width * height + width * height / 4;
+    } else if (this.pix_fmt == 'nv12') {
+      this.frame_len *= 3;
+      this.frame_len /= 2;
+      this.chroma_horz_freq_log2 = 1;
+      this.chroma_vert_freq_log2 = 1;
+      this.chroma_u_offset = width * height;
+      this.chroma_v_offset = width * height + 1;
+      this.chroma_pix_sz = 2;
     }
 
-    this.chroma_height = this.height >> this.chroma_vert_freq_log2;
-    this.chroma_width = this.width >> this.chroma_horz_freq_log2;
+    this.chroma_line_sz = this.chroma_pix_sz * (this.width >> this.chroma_horz_freq_log2);
   };
 };

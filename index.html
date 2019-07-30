@@ -423,7 +423,7 @@
             g_ctx.default_height = parseInt(m[2]);
           };
 
-          m = fmt.match(/(yv12|i420|gray)/);
+          m = fmt.match(/(yv12|i420|nv12|yv16|yv24|gray)/);
           if (m) {
             g_ctx.default_pix_fmt = m[1];
           }
