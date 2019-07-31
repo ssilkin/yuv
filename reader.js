@@ -53,7 +53,7 @@ function FrameReader() {
           }
         }
 
-        m = file.name.toLowerCase().match(/[-_](yv12|yv16|yv24|gray)/);
+        m = file.name.toLowerCase().match(/[-_](yv12|nv12|yv16|yv24|gray)/);
         if (m) {
           pix_fmt = m[1] == '400' ? 'gray' : m[1];
         }
